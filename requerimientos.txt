@@ -1,0 +1,5 @@
+streamlit==1.50.0
+streamlit-antd-components==0.3.2
+streamlit-aggrid==1.1.9
+millify==0.1.1
+streamlit-extras==0.7.5
