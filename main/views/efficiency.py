@@ -38,7 +38,7 @@ def _roi_demo_data() -> pd.DataFrame:
         ("HCPs emailing", "Field Marketing", 3.20, 0.68),
 
         # Social / Video (single entries)
-        ("Referrals & Content Generation", "Leadership & Advocacy", 1.55, 0.76),
+        ("Referrals & Content", "Leadership & Advocacy", 1.55, 0.76),
         ("KOL campaigns", "Leadership & Advocacy", 1.65, 1.24),
 
         # Added channels
