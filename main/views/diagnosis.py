@@ -439,6 +439,7 @@ def show_view() -> None:
         )
 
         df_month = monthly_sales.merge(df_inv, on="month", how="left")
+        max_investment = df_month[channel_names].sum(axis=1).max()
 
         fig_inv = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -462,10 +463,19 @@ def show_view() -> None:
                 y=df_month["sales"],
                 name="Sales",
                 mode="lines+markers",
+                line=dict(
+                    color="#111827",   # negro fuerte (puedes cambiarlo)
+                    width=4            # más grueso
+                ),
+                marker=dict(
+                    size=8,
+                    color="#111827"
+                ),
                 hovertemplate="%{x|%b %Y}<br>Sales: %{y:,.0f}<extra></extra>",
             ),
             secondary_y=True,
         )
+
 
         fig_inv.update_layout(
             height=420,
@@ -483,7 +493,12 @@ def show_view() -> None:
             barmode="stack",
             xaxis_title="",
         )
-        fig_inv.update_yaxes(title_text="Investment (€)", secondary_y=False)
+        fig_inv.update_yaxes(
+            title_text="Investment (€)",
+            secondary_y=False,
+            range=[0, max_investment * 2]  # 👈 2X el máximo
+        )
+
         fig_inv.update_yaxes(title_text="Sales", secondary_y=True)
         fig_inv.update_xaxes(tickangle=0, tickfont=dict(size=13))
 
@@ -560,6 +575,54 @@ def show_view() -> None:
             )
 
             st.plotly_chart(pie_fig, use_container_width=True, config={"displayModeBar": False})
+        # =========================================================
+        # 4) Export tables (for download)
+        # =========================================================
+        st.subheader("Data exports")
+
+        # -------------------------
+        # Table 1: Monthly investment vs sales
+        # -------------------------
+        st.markdown("**Monthly investment vs sales (data)**")
+
+        df_month_export = df_month.copy()
+
+        # Orden de columnas: month, sales, y luego canales
+        month_cols = ["month", "sales"] + [c for c in channel_names if c in df_month_export.columns]
+        df_month_export = df_month_export[month_cols]
+
+        st.dataframe(df_month_export, use_container_width=True)
+
+        csv_month = df_month_export.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="Download monthly investment vs sales (CSV)",
+            data=csv_month,
+            file_name=f"monthly_investment_vs_sales_{product}_{country_opt}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        st.markdown("---")
+
+        # -------------------------
+        # Table 2: Contribution decomposition (data)
+        # -------------------------
+        st.markdown("**Contribution decomposition (data, M€)**")
+
+        # Solo columnas que existan realmente + date
+        contrib_cols = ["date"] + [c for c in full_order if c in contrib_m.columns and c != "date"]
+        contrib_export = contrib_m[contrib_cols].copy()
+
+        st.dataframe(contrib_export, use_container_width=True)
+
+        csv_contrib = contrib_export.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="Download contribution decomposition (CSV)",
+            data=csv_contrib,
+            file_name=f"contribution_decomposition_{product}_{country_opt}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
 
     with right:
         st.subheader("Model diagnosis")
