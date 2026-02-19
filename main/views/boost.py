@@ -20,6 +20,18 @@ def _inject_css():
     )
 
 
+def _dummy_uplift_pct(selected_channels: list[str], total_budget: float) -> float:
+    """
+    Devuelve un uplift dummy (2%-5%) pero estable:
+    - se mantiene al cambiar widgets (reruns)
+    - cambia si cambias canales o budget
+    """
+    key = f"{sorted(selected_channels)}|{int(total_budget)}"
+    seed = abs(hash(key)) % (2**32)
+    rng = np.random.default_rng(seed)
+    return float(rng.uniform(0.02, 0.05))
+
+
 def show_view():
     _inject_css()
 
@@ -34,11 +46,10 @@ def show_view():
     )
 
     # -----------------------------
-    # Budget scenario (LEFT-aligned labels)
+    # Budget scenario
     # -----------------------------
     st.subheader("Budget scenario")
 
-    st.markdown("**Budget option**")
     scenario = st.radio(
         label="Budget option",
         options=["Keep current budget", "Set new total budget"],
@@ -74,23 +85,6 @@ def show_view():
         label_visibility="collapsed",
     )
 
-#    # Channels aligned with main/views/efficiency.py
-#    all_channels = [
-#        "TV",
-#        "Outdoor",
-#        "Radio",
-#        "Press",
-#        "Paid Search",
-#        "Display",
-#        "Retargeting",
-#        "Facebook",
-#        "YouTube",
-#        "Sampling",
-#        "Sponsorship",
-#        "Affiliate",
-#        "Online Radio",
-#    ]
-#
     all_channels = [
         "Corporate Social Media",
         "Medical magazines",
@@ -118,54 +112,54 @@ def show_view():
     else:
         selected_channels = all_channels
 
+    # -----------------------------
+    # Session state: keep results across reruns
+    # -----------------------------
+    if "opt_ran" not in st.session_state:
+        st.session_state["opt_ran"] = False
+    if "opt_df" not in st.session_state:
+        st.session_state["opt_df"] = None
+    if "opt_total_budget" not in st.session_state:
+        st.session_state["opt_total_budget"] = CURRENT_TOTAL
+    if "opt_selected_channels" not in st.session_state:
+        st.session_state["opt_selected_channels"] = all_channels
+
     st.markdown("")
-    if not st.button("Run optimization"):
+    run_clicked = st.button("Run optimization")
+
+    # Persist user choices when running
+    if run_clicked:
+        st.session_state["opt_ran"] = True
+        st.session_state["opt_total_budget"] = total_budget
+        st.session_state["opt_selected_channels"] = selected_channels
+
+    # If not ran yet, stop here (but won't collapse after reruns once ran)
+    if not st.session_state["opt_ran"]:
         st.info("Select a budget scenario (and optional constraints) then run the optimization.")
         return
+
+    # Use persisted choices (so reruns don't change outputs unless user re-runs)
+    total_budget = st.session_state["opt_total_budget"]
+    selected_channels = st.session_state["opt_selected_channels"]
 
     # -----------------------------
     # Fake current budgets (shares)
     # -----------------------------
-    # Baseline shares for the full channel set (must sum to 1.0)
-#    base_shares = pd.Series(
-#        {
-#            # Offline
-#            "TV": 0.30,
-#            "Outdoor": 0.07,
-#            "Radio": 0.06,
-#            "Press": 0.04,
-#            # Digital / Performance
-#            "Paid Search": 0.16,
-#            "Display": 0.05,
-#            "Retargeting": 0.05,
-#            # Social / Video
-#            "Facebook": 0.08,
-#            "YouTube": 0.09,
-#            # Others
-#            "Sampling": 0.03,
-#            "Sponsorship": 0.03,
-#            "Affiliate": 0.03,
-#            "Online Radio": 0.01,
-#        },
-#        dtype=float,
-#    )
     base_shares = pd.Series(
-{
-    # ↓↓↓ Ajuste demo: bajar CSM a ~1M€ con total 40M€ (share ~0.025)
-    # (Revertible: vuelve a 0.30 si quieres el comportamiento anterior)
-    "Corporate Social Media": 0.025,
-
-    "Medical magazines": 0.08,
-    "Sales representative": 0.18,
-    "HCPs emailing": 0.09,
-    "Referrals & Content Generation": 0.10,
-    "KOL campaigns": 0.11,
-    "HCPs platforms": 0.05,
-    "Sponsorship": 0.04,
-    "Webinars & Congresses": 0.05,
-},
-dtype=float,
-)
+        {
+            # ↓↓↓ Ajuste demo: bajar CSM a ~1M€ con total 40M€ (share ~0.025)
+            "Corporate Social Media": 0.025,
+            "Medical magazines": 0.08,
+            "Sales representative": 0.18,
+            "HCPs emailing": 0.09,
+            "Referrals & Content Generation": 0.10,
+            "KOL campaigns": 0.11,
+            "HCPs platforms": 0.05,
+            "Sponsorship": 0.04,
+            "Webinars & Congresses": 0.05,
+        },
+        dtype=float,
+    )
 
     shares = base_shares[selected_channels].copy()
     shares = shares / shares.sum()
@@ -176,36 +170,16 @@ dtype=float,
     # -----------------------------
     # Fake optimal ranges (multipliers vs current)
     # -----------------------------
-#    ranges = {
-#        # Offline
-#        "TV": (0.85, 0.90),
-#        "Outdoor": (0.95, 1.08),
-#        "Radio": (0.98, 1.10),
-#        "Press": (0.90, 1.05),
-#        # Digital / Performance
-#        "Paid Search": (1.03, 1.10),
-#        "Display": (0.95, 1.10),
-#        "Retargeting": (1.05, 1.18),
-#        # Social / Video
-#        "Facebook": (0.98, 1.12),
-#        "YouTube": (1.05, 1.20),
-#        # Others
-#        "Sampling": (0.95, 1.15),
-#        "Sponsorship": (0.92, 1.10),
-#        "Affiliate": (1.02, 1.15),
-#        "Online Radio": (0.95, 1.12),
-#    }
-#
     ranges = {
-    "Corporate Social Media": (0.85, 0.90),
-    "Medical magazines": (0.98, 1.10),
-    "Sales representative": (1.03, 1.10),
-    "HCPs emailing": (1.05, 1.18),
-    "Referrals & Content Generation": (0.98, 1.12),
-    "KOL campaigns": (1.05, 1.20),
-    "HCPs platforms": (0.95, 1.15),
-    "Sponsorship": (0.92, 1.10),
-    "Webinars & Congresses": (1.02, 1.15),
+        "Corporate Social Media": (0.85, 0.90),
+        "Medical magazines": (0.98, 1.10),
+        "Sales representative": (1.03, 1.10),
+        "HCPs emailing": (1.05, 1.18),
+        "Referrals & Content Generation": (0.98, 1.12),
+        "KOL campaigns": (1.05, 1.20),
+        "HCPs platforms": (0.95, 1.15),
+        "Sponsorship": (0.92, 1.10),
+        "Webinars & Congresses": (1.02, 1.15),
     }
 
     df["Optimal min"] = df.apply(lambda r: r["Current"] * ranges[str(r["Channel"])][0], axis=1)
@@ -224,25 +198,25 @@ dtype=float,
     df["Channel"] = pd.Categorical(df["Channel"].astype(str), categories=order, ordered=True)
     df = df.sort_values("Channel")
 
+    # Persist computed df (optional but useful)
+    st.session_state["opt_df"] = df
+
     # -----------------------------
-    # Visualization (split: TV in GRPs, others in €)
-    # Current = bar, Optimal = box (min-max)
+    # Visualization
     # -----------------------------
     st.subheader("Recommended investment ranges")
-
-    #EUR_PER_GRP = 20_000  # demo conversion € -> GRPs
 
     TV_CHANNEL = "Sales representative"
     df_tv = df[df["Channel"].astype(str) == TV_CHANNEL].copy()
     df_other = df[df["Channel"].astype(str) != TV_CHANNEL].copy()
-   # Palette: keep TV dark; others in the turquoise family
+
     colors = {ch: "#2AA6B5" for ch in all_channels}
     colors[TV_CHANNEL] = "#0B1F3B"
 
     col_left, col_right = st.columns([1, 2])
 
     # =========
-    # TV (GRPs)
+    # Featured channel
     # =========
     with col_left:
         st.markdown("**Sales representative (€)**")
@@ -250,8 +224,6 @@ dtype=float,
 
         if not df_tv.empty:
             r = df_tv.iloc[0]
-
-            # 👉 Ahora todo en euros, sin dividir
             tv_curr = float(r["Current"])
             tv_min = float(r["Optimal min"])
             tv_max = float(r["Optimal max"])
@@ -264,7 +236,7 @@ dtype=float,
                     width=0.42,
                     marker_color=colors[TV_CHANNEL],
                     showlegend=False,
-                    hovertemplate="{TV_CHANNEL}<br>Current: %{y:,.0f}€<extra></extra>",
+                    hovertemplate=TV_CHANNEL + "<br>Current: %{y:,.0f}€<extra></extra>",
                 )
             )
 
@@ -282,7 +254,7 @@ dtype=float,
                     fillcolor="rgba(42, 166, 181, 0.35)",
                     line=dict(width=1, color="rgba(42,166,181,0.35)"),
                     showlegend=False,
-                    hovertemplate="{TV_CHANNEL}<br>Optimal: %{customdata}<extra></extra>",
+                    hovertemplate=f"{TV_CHANNEL}<br>Optimal: %{{customdata}}<extra></extra>",
                     customdata=[f"€{tv_min:,.0f}–€{tv_max:,.0f}"],
                 )
             )
@@ -298,7 +270,7 @@ dtype=float,
         st.plotly_chart(fig_tv, use_container_width=True)
 
     # =====================
-    # Rest (euros)
+    # Rest (euros) + uplift callout
     # =====================
     with col_right:
         st.markdown("**Digital / Other channels (€)**")
@@ -341,6 +313,27 @@ dtype=float,
                     )
                 )
 
+        # ---- Global uplift (dummy 2-5%) callout
+        uplift = _dummy_uplift_pct(selected_channels=selected_channels, total_budget=total_budget)
+        uplift_pct = uplift * 100
+
+        fig_eur.add_annotation(
+            xref="paper",
+            yref="paper",
+            x=0.99,
+            y=0.99,
+            xanchor="right",
+            yanchor="top",
+            text=f"Expected sales uplift: +{uplift_pct:.1f}%",
+            showarrow=False,
+            align="right",
+            font=dict(size=12),
+            bgcolor="rgba(255,255,255,0.85)",
+            bordercolor="rgba(0,0,0,0.15)",
+            borderwidth=1,
+            borderpad=6,
+        )
+
         fig_eur.update_layout(
             height=380,
             yaxis_title="Annual budget (€)",
@@ -352,7 +345,7 @@ dtype=float,
         st.plotly_chart(fig_eur, use_container_width=True)
 
     # -----------------------------
-    # Table (TV in GRPs, rest in €)
+    # Table
     # -----------------------------
     st.subheader("Budget recommendation summary")
 
@@ -381,10 +374,8 @@ dtype=float,
     st.dataframe(df_display, use_container_width=True)
 
     # -----------------------------
-    # Saturation / optimization curves (demo) - consistent turquoise palette
-    # -----------------------------
-    # -----------------------------
-    # Saturation / optimization curves (demo) - consistent turquoise palette
+    # Saturation / optimization curves (demo)
+    # NOTE: selectbox has a key so it remembers selection across reruns
     # -----------------------------
     with st.expander("View saturation curves"):
         st.caption(
@@ -402,7 +393,6 @@ dtype=float,
             return cap * (x**gamma) / (x**gamma + alpha**gamma)
 
         def build_curve(channel: str):
-            # Simple demo params per channel (all in € now)
             params = {
                 "Corporate Social Media": dict(alpha=900_000, gamma=1.6, cap=1.0),
                 "Medical magazines": dict(alpha=3_000_000, gamma=1.25, cap=1.0),
@@ -423,11 +413,15 @@ dtype=float,
             return x, y
 
         ch_options = df["Channel"].astype(str).tolist()
-        selected_curve_channel = st.selectbox("Channel", ch_options, index=0)
+        selected_curve_channel = st.selectbox(
+            "Channel",
+            ch_options,
+            index=0,
+            key="sat_curve_channel",
+        )
 
         unit = "€"
 
-        # 👉 aquí definimos row correctamente
         row = df[df["Channel"].astype(str) == selected_curve_channel].iloc[0]
         curr_x = float(row["Current"])
         opt_min_x = float(row["Optimal min"])
