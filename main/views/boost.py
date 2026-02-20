@@ -341,6 +341,11 @@ def show_view():
             margin=dict(l=10, r=10, t=10, b=10),
             barmode="overlay",
         )
+        fig_eur.update_xaxes(
+            tickangle=0,
+            tickfont=dict(size=13),
+            automargin=True
+        )
 
         st.plotly_chart(fig_eur, use_container_width=True)
 
