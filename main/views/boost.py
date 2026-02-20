@@ -327,7 +327,7 @@ def show_view():
             text=f"Expected sales uplift: +{uplift_pct:.1f}%",
             showarrow=False,
             align="right",
-            font=dict(size=12),
+            font=dict(size=20),
             bgcolor="rgba(255,255,255,0.85)",
             bordercolor="rgba(0,0,0,0.15)",
             borderwidth=1,
